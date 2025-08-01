@@ -1,18 +1,46 @@
 import cv2
 import time
 import numpy as np
-from flask import Flask, Response
+from flask import Flask, request, render_template_string
+import tempfile
+import os
 
 app = Flask(__name__)
 
-@app.route("/")
+HTML_FORM = """
+<!doctype html>
+<title>Drop Counter</title>
+<h1>Upload a video file</h1>
+<form action="/detect" method=post enctype=multipart/form-data>
+  <input type=file name=video_file>
+  <input type=submit value=Upload>
+</form>
+"""
+
+@app.route("/", methods=["GET"])
+def upload_form():
+    return render_template_string(HTML_FORM)
+
+@app.route("/detect", methods=["POST"])
 def detect_drops():
-    cap = cv2.VideoCapture('unfocused.mp4')
+    if 'video_file' not in request.files:
+        return "No file part"
+
+    file = request.files['video_file']
+    if file.filename == '':
+        return "No selected file"
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+        filepath = tmp.name
+        file.save(filepath)
+
+    cap = cv2.VideoCapture(filepath)
     drop_count = 0
 
     ret, prev_frame = cap.read()
     if not ret:
         cap.release()
+        os.unlink(filepath)
         return "Failed to read video"
 
     prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
@@ -52,4 +80,5 @@ def detect_drops():
         prev_gray = gray.copy()
 
     cap.release()
+    os.unlink(filepath)
     return f"Total drops detected: {drop_count}"
